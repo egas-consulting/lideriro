@@ -271,7 +271,7 @@ var config = {
             hidden: false,
             title: 'Africa',
             image: '',
-            description: 'În Africa, dintr-un total de 54 de șefi de stat, sunt doar două femei președinte, în Etiopia și în Tanzania. Aceasta reprezintă cea mai mică proporție de șefi de stat de sex feminin, în comparație cu bărbații, la nivel global. Dacă ne uităm la reprezentarea generatională, predominanți sunt cei din Generația Baby Boomers, deși Africa are trei șefi de stat din Generația Millennial. Fundamentul academic al majorității acestor lideri este ancorat în domeniul Profesiilor și Științelor Aplicate. Tot aici se găsesc doi din totalul de patru la nivel global de șefi de stat cu educație în domeniul științelor naturale (ex: biologie, chimie, fizică etc.).',
+            description: 'În Africa, dintr-un total de 54 de șefi de stat, sunt doar două femei președinte, în Etiopia și în Tanzania. Aceasta reprezintă cea mai mică proporție de șefi de stat de sex feminin, în comparație cu bărbații, la nivel global. Dacă ne uităm la reprezentarea generațională, predominanți sunt cei din Generația Baby Boomers, deși Africa are trei șefi de stat din Generația Millennial. Fundamentul academic al majorității acestor lideri este ancorat în domeniul Profesiilor și Științelor Aplicate. Tot aici se găsesc doi din cei patru șefi de stat din lume cu educație în domeniul Științelor Naturale (ex: biologie, chimie, fizică etc.).',
             location: {
                 center: [20.947116, 5.211306],
                 zoom: 4,
@@ -301,7 +301,7 @@ var config = {
             hidden: false,
             title: 'America de Nord și de Sud',
             image: '',
-            description: 'Aici, dintr-un total de 35 de șefi de stat, patru sunt femei. În cadrul acestui grup de lideri, prezența generatională dominantă provine din cohorta Baby Boomers. Ce este distinct aici este faptul că majoritatea șefilor de stat au urmat studiile universitare în domeniul Științelor Umaniste și Sociale (ex: istorie, limbi străine, literatură, arte etc.)',
+            description: 'Aici, dintr-un total de 35 de șefi de stat, patru sunt femei. În cadrul acestui grup de lideri, prezența generațională dominantă provine din cohorta Baby Boomers. Ce este distinct aici este faptul că majoritatea șefilor de stat au urmat studiile universitare în domeniul Științelor Umaniste și Sociale (ex: istorie, limbi străine, literatură, arte etc.)',
             location: {
                 center: [-65.595005, -6.719165],
                 zoom: 5,

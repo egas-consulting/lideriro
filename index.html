@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>story leaders</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+    <link rel="icon" type="image/x-icon" href="https://raw.githubusercontent.com/mapbox/assembly/publisher-staging/src/svgs/mapbox.svg">
+    <script src="https://api.tiles.mapbox.com/mapbox-gl-js/v2.11.0/mapbox-gl.js"></script>
+    <link href="https://api.tiles.mapbox.com/mapbox-gl-js/v2.11.0/mapbox-gl.css" rel="stylesheet" />
+    <script src="https://unpkg.com/intersection-observer@0.12.0/intersection-observer.js"></script>
+    <script src="https://unpkg.com/scrollama"></script>
+    <style>
+        body {
+            margin:0;
+            padding:0;
+            font-family:'Roboto', sans-serif;
+        }
+        a, a:hover, a:visited {
+            color: #000000;
+        }
+        #map {
+            top:0;
+            height: 100vh;
+            width:100vw;
+            position: fixed;
+        }
+        
+        .marker {
+            /* background-image: url('test.png'); */
+            /* background-size: cover; */
+            /* width: 50px; */
+            /* height: 50px; */
+            border-radius: 50%;
+            cursor: pointer;
+            display: block;
+            border: none;
+            padding: 0;
+        }
+
+        .mapboxgl-popup {
+            max-width: 200px;
+        }
+
+        .mapboxgl-popup-content {
+        text-align: center;
+        font-family: 'Open Sans', sans-serif;
+        }
+        #mapInset {
+            bottom:50px;
+            right:30px;
+            height: 180px;
+            width:250px;
+            max-width:100%;
+            position: fixed;
+            z-index: 1;
+            opacity: 1;
+            transition: opacity 0.5s ease-in-out;
+            pointer-events: none;
+        }
+        #mapInset .mapboxgl-ctrl-bottom-left{
+            display: none;
+        }
+        @media (max-width: 500px) {
+            #mapInset {
+                display: none;
+            }
+        }
+        #header {
+            margin: auto;
+            width: 100%;
+            position: relative;
+            z-index: 5;
+            background-color: #20202000;
+            
+        }
+
+        #header h1, #header h2, #header p {
+            margin: 0;
+            padding: 1vh 4vw;
+            text-align: center; 
+
+        }
+        #header h1 {
+            padding-top:10vh;
+        }
+        #footer {
+            width: 100%;
+            min-height: 1vh;
+            padding-top: 1vh;
+            padding-bottom: 1vh;
+            text-align: center;
+            line-height: 25px;
+            font-size: 13px;
+            position: relative;
+            z-index: 5;
+        }
+        #features {
+            padding-top: 10vh;
+            padding-bottom: 10vh;
+        }
+        .hidden {
+            visibility: hidden;
+        }
+        .centered {
+            width: 50vw;
+            margin: 0 auto;
+        }
+        .lefty {
+            width: 33vw;
+            margin-left: 5vw;
+        }
+        .righty {
+            width: 33vw;
+            margin-left: 62vw;
+        }
+        .fully {
+            width: 100%;
+            margin: auto;
+        }
+        .light {
+            color: #0a0a0a;
+            background-color: #ffffff;
+            border-radius: 0px;
+        }
+        .dark {
+            color: #3a2a00;
+            background-color: #14141400;
+        }
+        .step {
+            padding-bottom: 50vh;
+            /* margin-bottom: 10vh; */
+            opacity: 0.25;
+            
+        }
+        .step.active {
+            opacity: 0.9;
+        }
+
+        .step div {
+            padding:  25px 50px;
+            line-height: 25px;
+            font-size: 1rem;
+        }
+
+        .step img {
+            width: 100%;
+            
+        }
+
+        @media (max-width: 750px) {
+            .centered, .lefty, .righty, .fully {
+                width: 90vw;
+                margin: 0 auto;
+            }
+        }
+
+        /* Fix issue on mobile browser where scroll breaks  */
+        .mapboxgl-canvas-container.mapboxgl-touch-zoom-rotate.mapboxgl-touch-drag-pan,
+        .mapboxgl-canvas-container.mapboxgl-touch-zoom-rotate.mapboxgl-touch-drag-pan .mapboxgl-canvas {
+            touch-action: unset;
+        }
+
+        
+        </style>
+</head>
+<body>
+<div id="map"></div>
+<div id="mapInset"></div>
+<div id="story"></div>
+
+<script src="./config.js"></script>
+<script>
+var initLoad = true;
+var layerTypes = {
+    'fill': ['fill-opacity'],
+    'line': ['line-opacity'],
+    'circle': ['circle-opacity', 'circle-stroke-opacity'],
+    'symbol': ['icon-opacity', 'text-opacity'],
+    'raster': ['raster-opacity'],
+    'fill-extrusion': ['fill-extrusion-opacity'],
+    'heatmap': ['heatmap-opacity']
+}
+
+var alignments = {
+    'left': 'lefty',
+    'center': 'centered',
+    'right': 'righty',
+    'full': 'fully'
+}
+
+function getLayerPaintType(layer) {
+    var layerType = map.getLayer(layer).type;
+    return layerTypes[layerType];
+}
+
+function setLayerOpacity(layer) {
+    var paintProps = getLayerPaintType(layer.layer);
+    paintProps.forEach(function(prop) {
+        var options = {};
+        if (layer.duration) {
+            var transitionProp = prop + "-transition";
+            options = { "duration": layer.duration };
+            map.setPaintProperty(layer.layer, transitionProp, options);
+        }
+        map.setPaintProperty(layer.layer, prop, layer.opacity, options);
+    });
+}
+
+var story = document.getElementById('story');
+var features = document.createElement('div');
+features.setAttribute('id', 'features');
+
+var header = document.createElement('div');
+
+if (config.title) {
+    var titleText = document.createElement('h1');
+    titleText.innerHTML = config.title;
+    header.appendChild(titleText);
+}
+
+if (config.subtitle) {
+    var subtitleText = document.createElement('h2');
+    subtitleText.innerHTML = config.subtitle;
+    header.appendChild(subtitleText);
+}
+
+if (config.byline) {
+    var bylineText = document.createElement('p');
+    bylineText.innerHTML = config.byline;
+    header.appendChild(bylineText);
+}
+
+if (header.innerText.length > 0) {
+    header.classList.add(config.theme);
+    header.setAttribute('id', 'header');
+    story.appendChild(header);
+}
+
+config.chapters.forEach((record, idx) => {
+    var container = document.createElement('div');
+    var chapter = document.createElement('div');
+
+    if (record.title) {
+        var title = document.createElement('h3');
+        title.innerHTML = record.title;
+        chapter.appendChild(title);
+    }
+
+    if (record.image) {
+        var image = new Image();
+        image.src = record.image;
+        chapter.appendChild(image);
+    }
+
+    if (record.description) {
+        var story = document.createElement('p');
+        story.innerHTML = record.description;
+        chapter.appendChild(story);
+    }
+
+    container.setAttribute('id', record.id);
+    container.classList.add('step');
+    if (idx === 0) {
+        container.classList.add('active');
+    }
+
+    chapter.classList.add(config.theme);
+    container.appendChild(chapter);
+    container.classList.add(alignments[record.alignment] || 'centered');
+    if (record.hidden) {
+        container.classList.add('hidden');
+    }
+    features.appendChild(container);
+});
+
+story.appendChild(features);
+
+var footer = document.createElement('div');
+
+if (config.footer) {
+    var footerText = document.createElement('p');
+    footerText.innerHTML = config.footer;
+    footer.appendChild(footerText);
+}
+
+if (footer.innerText.length > 0) {
+    footer.classList.add(config.theme);
+    footer.setAttribute('id', 'footer');
+    story.appendChild(footer);
+}
+
+mapboxgl.accessToken = config.accessToken;
+
+const transformRequest = (url) => {
+    const hasQuery = url.indexOf("?") !== -1;
+    const suffix = hasQuery ? "&pluginName=scrollytellingV2" : "?pluginName=scrollytellingV2";
+    return {
+      url: url + suffix
+    }
+}
+
+var map = new mapboxgl.Map({
+    container: 'map',
+    style: config.style,
+    center: config.chapters[0].location.center,
+    zoom: config.chapters[0].location.zoom,
+    bearing: config.chapters[0].location.bearing,
+    pitch: config.chapters[0].location.pitch,
+    interactive: true,
+    transformRequest: transformRequest,
+    projection: config.projection
+});
+
+// Create a inset map if enabled in config.js
+if (config.inset) {
+ var insetMap = new mapboxgl.Map({
+    container: 'mapInset', // container id
+    style: 'mapbox://styles/mapbox/dark-v10', //hosted style id
+    center: config.chapters[0].location.center,
+    // Hardcode above center value if you want insetMap to be static.
+    zoom: 3, // starting zoom
+    hash: false,
+    interactive: false,
+    attributionControl: false,
+    //Future: Once official mapbox-gl-js has globe view enabled,
+    //insetmap can be a globe with the following parameter.
+    //projection: 'globe'
+  });
+}
+
+if (config.showMarkers) {
+    var marker = new mapboxgl.Marker({ color: config.markerColor });
+    marker.setLngLat(config.chapters[0].location.center).addTo(map);
+}
+
+// instantiate the scrollama
+var scroller = scrollama();
+
+
+map.on("load", function() {
+    if (config.use3dTerrain) {
+        map.addSource('mapbox-dem', {
+            'type': 'raster-dem',
+            'url': 'mapbox://mapbox.mapbox-terrain-dem-v1',
+            'tileSize': 512,
+            'maxzoom': 14
+        });
+        // add the DEM source as a terrain layer with exaggerated height
+        map.setTerrain({ 'source': 'mapbox-dem', 'exaggeration': 1.5 });
+
+        // add a sky layer that will show when the map is highly pitched
+        map.addLayer({
+            'id': 'sky',
+            'type': 'sky',
+            'paint': {
+                'sky-type': 'atmosphere',
+                'sky-atmosphere-sun': [0.0, 0.0],
+                'sky-atmosphere-sun-intensity': 15
+            }
+        });
+    };
+
+    // As the map moves, grab and update bounds in inset map.
+    if (config.inset) {
+    map.on('move', getInsetBounds);
+    }
+    // setup the instance, pass callback functions
+    scroller
+    .setup({
+        step: '.step',
+        offset: 0.5,
+        progress: true
+    })
+    .onStepEnter(async response => {
+        var current_chapter = config.chapters.findIndex(chap => chap.id === response.element.id);
+        var chapter = config.chapters[current_chapter];
+        
+        response.element.classList.add('active');
+        map[chapter.mapAnimation || 'flyTo'](chapter.location);
+
+        // Incase you do not want to have a dynamic inset map,
+        // rather want to keep it a static view but still change the
+        // bbox as main map move: comment out the below if section.
+        if (config.inset) {
+          if (chapter.location.zoom < 5) {
+            insetMap.flyTo({center: chapter.location.center, zoom: 0});
+          }
+          else {
+            insetMap.flyTo({center: chapter.location.center, zoom: 3});
+          }
+        }
+        if (config.showMarkers) {
+            marker.setLngLat(chapter.location.center);
+        }
+        if (chapter.onChapterEnter.length > 0) {
+            chapter.onChapterEnter.forEach(setLayerOpacity);
+        }
+        if (chapter.callback) {
+            window[chapter.callback]();
+        }
+        if (chapter.rotateAnimation) {
+            map.once('moveend', () => {
+                const rotateNumber = map.getBearing();
+                map.rotateTo(rotateNumber + 180, {
+                    duration: 30000, easing: function (t) {
+                        return t;
+                    }
+                });
+            });
+        }
+        if (config.auto) {
+             var next_chapter = (current_chapter + 1) % config.chapters.length;
+             map.once('moveend', () => {
+                 document.querySelectorAll('[data-scrollama-index="' + next_chapter.toString() + '"]')[0].scrollIntoView();
+             });
+        }
+    })
+    .onStepExit(response => {
+        var chapter = config.chapters.find(chap => chap.id === response.element.id);
+        response.element.classList.remove('active');
+        if (chapter.onChapterExit.length > 0) {
+            chapter.onChapterExit.forEach(setLayerOpacity);
+        }
+    });
+
+
+    if (config.auto) {
+        document.querySelectorAll('[data-scrollama-index="0"]')[0].scrollIntoView();
+    }
+});
+
+//Helper functions for insetmap
+function getInsetBounds() {
+            let bounds = map.getBounds();
+
+            let boundsJson = {
+                "type": "FeatureCollection",
+                "features": [{
+                    "type": "Feature",
+                    "properties": {},
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [
+                            [
+                                [
+                                    bounds._sw.lng,
+                                    bounds._sw.lat
+                                ],
+                                [
+                                    bounds._ne.lng,
+                                    bounds._sw.lat
+                                ],
+                                [
+                                    bounds._ne.lng,
+                                    bounds._ne.lat
+                                ],
+                                [
+                                    bounds._sw.lng,
+                                    bounds._ne.lat
+                                ],
+                                [
+                                    bounds._sw.lng,
+                                    bounds._sw.lat
+                                ]
+                            ]
+                        ]
+                    }
+                }]
+            }
+
+            if (initLoad) {
+                addInsetLayer(boundsJson);
+                initLoad = false;
+            } else {
+                updateInsetLayer(boundsJson);
+            }
+
+        }
+
+function addInsetLayer(bounds) {
+    insetMap.addSource('boundsSource', {
+        'type': 'geojson',
+        'data': bounds
+    });
+
+    insetMap.addLayer({
+        'id': 'boundsLayer',
+        'type': 'fill',
+        'source': 'boundsSource', // reference the data source
+        'layout': {},
+        'paint': {
+            'fill-color': '#fff', // blue color fill
+            'fill-opacity': 0.2
+        }
+    });
+    // // Add a black outline around the polygon.
+    insetMap.addLayer({
+        'id': 'outlineLayer',
+        'type': 'line',
+        'source': 'boundsSource',
+        'layout': {},
+        'paint': {
+            'line-color': '#000',
+            'line-width': 1
+        }
+    });
+}
+
+function updateInsetLayer(bounds) {
+    insetMap.getSource('boundsSource').setData(bounds);
+}
+// Add zoom and rotation controls to the map.
+map.addControl(new mapboxgl.NavigationControl());
+
+// setup resize event
+window.addEventListener('resize', scroller.resize);
+
+const geojson = 
+{
+"type": "FeatureCollection",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "Title": "Camerun", "Șef de stat": "Președinte Paul Biya", "iconUrl": "Cameroon.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Școala Națională de Administrație din Franța și Institutul de Studii Politice din Paris", "Gen": "Masculin", "Birth year ": 1933, "Generația": "Silent Generation", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 12.354722, 7.369722 ] } },
+{ "type": "Feature", "properties": { "Title": "Palestina", "Șef de stat": "Președinte Mahmoud Abbas", "iconUrl": "Palestine.png", "Academic field": "Professions and applied sciences", "Profession": "law", "Universitatea": "Universitatea din Damasc și Universitatea Rusă a Prieteniei între popoare", "Gen": "Masculin", "Birth year ": 1935, "Generația": "Silent Generation", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 35.233154, 31.952162 ] } },
+{ "type": "Feature", "properties": { "Title": "Arabia Saudită", "Șef de stat": "Regele Salman", "iconUrl": "Saudiarabia.png", "Academic field": null, "Profession": null, "Universitatea": null, "Gen": "Masculin", "Birth year ": 1935, "Generația": "Silent Generation", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 45.079162, 23.885942 ] } },
+{ "type": "Feature", "properties": { "Title": "Kuwait", "Șef de stat": "Emir Nawaf Al-Ahmad Al-Jaber Al-Sabah", "iconUrl": "Kuwait.png", "Academic field": null, "Profession": null, "Universitatea": null, "Gen": "Masculin", "Birth year ": 1937, "Generația": "Silent Generation", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 47.481766, 29.31166 ] } },
+{ "type": "Feature", "properties": { "Title": "Norvegia", "Șef de stat": "Regele Harald V", "iconUrl": "Norway.png", "Academic field": "Professions and applied sciences, Humanities and social sciences", "Profession": "Military officer, economics and politics", "Universitatea": "Academia Militară din Norvegia, Universitatea din Oxford", "Gen": "Masculin", "Birth year ": 1937, "Generația": "Silent Generation", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 8.468946, 60.472024 ] } },
+{ "type": "Feature", "properties": { "Title": "Iran", "Șef de stat": "Liderul Suprem Ali Khamenei", "iconUrl": "Iran.png", "Academic field": "Humanities and social sciences", "Profession": "cleric", "Universitatea": "Seminarul Qom", "Gen": "Masculin", "Birth year ": 1939, "Generația": "Silent Generation", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 53.688046, 32.427908 ] } },
+{ "type": "Feature", "properties": { "Title": "Danemarca", "Șef de stat": "Regina Margareta a II-a", "iconUrl": "Denmark.png", "Academic field": "Humanities and social sciences", "Profession": "philosophy, archeology and political science", "Universitatea": "Universitatea din Copenhaga, Universitatea din Cambridge, Aarhus University, Sorbona și London School of Economics", "Gen": "Feminin", "Birth year ": 1940, "Generația": "Silent Generation", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 9.501785, 56.26392 ] } },
+{ "type": "Feature", "properties": { "Title": "Irlanda", "Șef de stat": "Președinte Michael D. Higgins", "iconUrl": "Ireland.png", "Academic field": "Humanities and social sciences", "Profession": "sociology", "Universitatea": "University College Galway, Indiana University and Universitatea din Manchester", "Gen": "Masculin", "Birth year ": 1941, "Generația": "Silent Generation", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ -8.24389, 53.41291 ] } },
+{ "type": "Feature", "properties": { "Title": "Italia", "Șef de stat": "Președinte Sergio Mattarella", "iconUrl": "Italy.png", "Academic field": "Professions and applied sciences", "Profession": "law", "Universitatea": "Sapienza din Roma", "Gen": "Masculin", "Birth year ": 1941, "Generația": "Silent Generation", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 12.56738, 41.87194 ] } },
+{ "type": "Feature", "properties": { "Title": "Namibia", "Șef de stat": "Președinte Hage Geingob", "iconUrl": "Namibia.png", "Academic field": "Humanities and social sciences", "Profession": "international relations", "Universitatea": "Universitatea Temple, Universitatea Fordham, The New School New York și Universitatea din Leeds", "Gen": "Masculin", "Birth year ": 1941, "Generația": "Silent Generation", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 18.49041, -22.95764 ] } },
+{ "type": "Feature", "properties": { "Title": "Cote d'Ivoire", "Șef de stat": "Președinte Alassane Ouattara", "iconUrl": "Cotedivoire.png", "Academic field": "Humanities and social sciences", "Profession": "economics", "Universitatea": "Universitatea Drexel, Universitatea din Pennsylvania", "Gen": "Masculin", "Birth year ": 1942, "Generația": "Silent Generation", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ -5.54708, 7.539989 ] } },
+{ "type": "Feature", "properties": { "Title": "Guinea Ecuatorială", "Șef de stat": "Președinte Teodoro Obiang Nguema Mbasogo", "iconUrl": "Equatorialguinea.png", "Academic field": "Professions and applied sciences", "Profession": "labor administration", "Universitatea": "Colegio Nacional Enrique Nvo Okenve", "Gen": "Masculin", "Birth year ": 1942, "Generația": "Silent Generation", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 10.267895, 1.650801 ] } },
+{ "type": "Feature", "properties": { "Title": "Malta", "Șef de stat": "Președinte George Vella", "iconUrl": "Malta.png", "Academic field": "Professions and applied sciences", "Profession": "medicine", "Universitatea": "Universitatea din Malta", "Gen": "Masculin", "Birth year ": 1942, "Generația": "Silent Generation", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 14.375416, 35.937496 ] } },
+{ "type": "Feature", "properties": { "Title": "SUA", "Șef de stat": "Președinte Joe Biden", "iconUrl": "Sua.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Universitatea din Delaware și Universitatea Syracuse", "Gen": "Masculin", "Birth year ": 1942, "Generația": "Silent Generation", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -95.712891, 37.09024 ] } },
+{ "type": "Feature", "properties": { "Title": "Zimbabwe", "Șef de stat": "Președinte Emmerson Mnangagwa", "iconUrl": "Zimbabwe.png", "Academic field": "Professions and applied sciences", "Profession": "law and military", "Universitatea": "Universitatea din Londra, Universitatea din Zambia și Academia Militară din Egipt", "Gen": "Masculin", "Birth year ": 1942, "Generația": "Silent Generation", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 29.154857, -19.015438 ] } },
+{ "type": "Feature", "properties": { "Title": "Dominica", "Șef de stat": "Președinte Charles Savarin", "iconUrl": "Dominica.png", "Academic field": "Humanities and social sciences", "Profession": "development studies", "Universitatea": "Ruskin College London", "Gen": "Masculin", "Birth year ": 1943, "Generația": "Silent Generation", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -61.370976, 15.414999 ] } },
+{ "type": "Feature", "properties": { "Title": "Republica Congo", "Șef de stat": "Președinte Denis Sassou Nguesso", "iconUrl": "Congorepublic.png", "Academic field": "Professions and applied sciences", "Profession": "military", "Universitatea": "Școala de infanterie Saint-Maixent-l'Ecole", "Gen": "Masculin", "Birth year ": 1943, "Generația": "Silent Generation", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 15.827659, -0.228021 ] } },
+{ "type": "Feature", "properties": { "Title": "Austria", "Șef de stat": "Președinte Alexander Van der Bellen", "iconUrl": "Austria.png", "Academic field": "Humanities and social sciences", "Profession": "Economics", "Universitatea": "Universitatea din Innsbruck", "Gen": "Masculin", "Birth year ": 1944, "Generația": "Silent Generation", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 14.550072, 47.516231 ] } },
+{ "type": "Feature", "properties": { "Title": "Ghana", "Șef de stat": "Președinte Nana Akufo-Addo", "iconUrl": "Ghana.png", "Academic field": "Professions and applied sciences, Humanities and social sciences", "Profession": "economics and law", "Universitatea": "Universitatea din Oxford, Universitatea din Ghana și Inns of Court School of Law", "Gen": "Masculin", "Birth year ": 1944, "Generația": "Silent Generation", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ -1.023194, 7.946527 ] } },
+{ "type": "Feature", "properties": { "Title": "Irak", "Șef de stat": "Președinte Abdul Latif Rashid", "iconUrl": "Iraq.png", "Academic field": "Professions and applied sciences", "Profession": "civil engineering", "Universitatea": "Universitatea din Manchester și Universitatea din Liverpool", "Gen": "Masculin", "Birth year ": 1944, "Generația": "Silent Generation", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 43.679291, 33.223191 ] } },
+{ "type": "Feature", "properties": { "Title": "Nepal", "Șef de stat": "Președinte Ram Chandra Poudel", "iconUrl": "Nepal.png", "Academic field": "Humanities and social sciences", "Profession": "literature", "Universitatea": "Universitatea Sanskrită și Universitatea Tribhuvan", "Gen": "Masculin", "Birth year ": 1944, "Generația": "Silent Generation", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 84.124008, 28.394857 ] } },
+{ "type": "Feature", "properties": { "Title": "Uganda", "Șef de stat": "Președinte Yoweri Museveni", "iconUrl": "Uganda.png", "Academic field": "Humanities and social sciences", "Profession": "economics and political science", "Universitatea": "Universitatea din Dar es Salaam", "Gen": "Masculin", "Birth year ": 1944, "Generația": "Silent Generation", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 32.290275, 1.373333 ] } },
+{ "type": "Feature", "properties": { "Title": "Algeria", "Șef de stat": "Președinte Abdelmadjid Tebboune", "iconUrl": "Algeria.png", "Academic field": "Professions and applied sciences", "Profession": "Administration and politics", "Universitatea": "Școala Națională de Administrație Algeria", "Gen": "Masculin", "Birth year ": 1945, "Generația": "Silent Generation", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 1.659626, 28.033886 ] } },
+{ "type": "Feature", "properties": { "Title": "Brazilia", "Șef de stat": "Președinte Luiz Inacio Lula da Silva", "iconUrl": "Brazil.png", "Academic field": "no diploma", "Profession": "no diploma", "Universitatea": null, "Gen": "Masculin", "Birth year ": 1945, "Generația": "Silent Generation", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -51.92528, -14.235004 ] } },
+{ "type": "Feature", "properties": { "Title": "Laos", "Șef de stat": "Secretar General al Partidului Revoluționar al Poporului Thongloun Sisoulith", "iconUrl": "Laos.png", "Academic field": "Humanities and social sciences", "Profession": "philosophy, history", "Universitatea": "Colegiul Pedagogic din Neo Lao Hak Sat, Universitatea Herzen și Academia Rusă de Științe", "Gen": "Masculin", "Birth year ": 1945, "Generația": "Silent Generation", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 102.495496, 19.85627 ] } },
+{ "type": "Feature", "properties": { "Title": "Liechtenstein", "Șef de stat": "Principe Hans-Adam II", "iconUrl": "Liechtenstein.png", "Academic field": "Professions and applied sciences", "Profession": "Business administration", "Universitatea": "Universitatea St. Gallen", "Gen": "Masculin", "Birth year ": 1945, "Generația": "Silent Generation", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 9.555373, 47.166 ] } },
+{ "type": "Feature", "properties": { "Title": "Nicaragua", "Șef de stat": "Președinte Daniel Ortega", "iconUrl": "Nicaragua.png", "Academic field": "no diploma", "Profession": "no diploma", "Universitatea": null, "Gen": "Masculin", "Birth year ": 1945, "Generația": "Silent Generation", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -85.207229, 12.865416 ] } },
+{ "type": "Feature", "properties": { "Title": "Brunei", "Șef de stat": "Sultan Hassanal Bolkiah", "iconUrl": "Brunei.png", "Academic field": "Professions and applied sciences", "Profession": "military", "Universitatea": "Academia Militară Sandhurst", "Gen": "Masculin", "Birth year ": 1946, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 114.727669, 4.535277 ] } },
+{ "type": "Feature", "properties": { "Title": "Eritrea", "Șef de stat": "Președinte Isaias Afwerki", "iconUrl": "Eritrea.png", "Academic field": "no diploma", "Profession": "no diploma", "Universitatea": null, "Gen": "Masculin", "Birth year ": 1946, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 39.782334, 15.179384 ] } },
+{ "type": "Feature", "properties": { "Title": "Suedia", "Șef de stat": "Regele Carl XVI Gustaf", "iconUrl": "Sweden.png", "Academic field": "Humanities and social sciences", "Profession": "Political science and economics", "Universitatea": "Universitatea Uppsala și Universitatea din Stockholm", "Gen": "Masculin", "Birth year ": 1946, "Generația": "Baby Boomers", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 18.643501, 60.128161 ] } },
+{ "type": "Feature", "properties": { "Title": "Djibouti", "Șef de stat": "Președinte Ismail Omar Guelleh", "iconUrl": "Djibouti.png", "Academic field": null, "Profession": null, "Universitatea": null, "Gen": "Masculin", "Birth year ": 1947, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 42.590275, 11.825138 ] } },
+{ "type": "Feature", "properties": { "Title": "Samoa", "Șef de stat": "Afioga TuiMasculinali`ifano Va`aleto`a Eti Sualauvi II ", "iconUrl": "Samoa.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Samoa College, Universitatea Națională Australiană și Colegiul Teologic Malua", "Gen": "Masculin", "Birth year ": 1947, "Generația": "Baby Boomers", "Region": "Australia and Oceania" }, "geometry": { "type": "Point", "coordinates": [ -172.104629, -13.759029 ] } },
+{ "type": "Feature", "properties": { "Title": "Antigua și Barbuda", "Șef de stat": "Regele Charles III", "iconUrl": "Uk.png", "Academic field": "Humanities and social sciences", "Profession": "archeology, history", "Universitatea": "Universitatea din Cambridge", "Gen": "Masculin", "Birth year ": 1948, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -61.796428, 17.060816 ] } },
+{ "type": "Feature", "properties": { "Title": "Australia", "Șef de stat": "Regele Charles III", "iconUrl": "Uk.png", "Academic field": "Humanities and social sciences", "Profession": "archeology, history", "Universitatea": "Universitatea din Cambridge", "Gen": "Masculin", "Birth year ": 1948, "Generația": "Baby Boomers", "Region": "Australia and Oceania" }, "geometry": { "type": "Point", "coordinates": [ 133.775136, -25.274398 ] } },
+{ "type": "Feature", "properties": { "Title": "Bahamas", "Șef de stat": "Regele Charles III", "iconUrl": "Uk.png", "Academic field": "Humanities and social sciences", "Profession": "archeology, history", "Universitatea": "Universitatea din Cambridge", "Gen": "Masculin", "Birth year ": 1948, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -77.39628, 25.03428 ] } },
+{ "type": "Feature", "properties": { "Title": "Belize", "Șef de stat": "Regele Charles III", "iconUrl": "Uk.png", "Academic field": "Humanities and social sciences", "Profession": "archeology, history", "Universitatea": "Universitatea din Cambridge", "Gen": "Masculin", "Birth year ": 1948, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -88.49765, 17.189877 ] } },
+{ "type": "Feature", "properties": { "Title": "Canada", "Șef de stat": "Regele Charles III", "iconUrl": "Uk.png", "Academic field": "Humanities and social sciences", "Profession": "archeology, history", "Universitatea": "Universitatea din Cambridge", "Gen": "Masculin", "Birth year ": 1948, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -106.346771, 56.130366 ] } },
+{ "type": "Feature", "properties": { "Title": "Finlanda", "Șef de stat": "Președinte Sauli Niinisto", "iconUrl": "Finland.png", "Academic field": "Professions and applied sciences", "Profession": "law", "Universitatea": "Universitatea din Turku", "Gen": "Masculin", "Birth year ": 1948, "Generația": "Baby Boomers", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 25.748151, 61.92411 ] } },
+{ "type": "Feature", "properties": { "Title": "Grenada", "Șef de stat": "Regele Charles III", "iconUrl": "Uk.png", "Academic field": "Humanities and social sciences", "Profession": "archeology, history", "Universitatea": "Universitatea din Cambridge", "Gen": "Masculin", "Birth year ": 1948, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -61.604171, 12.262776 ] } },
+{ "type": "Feature", "properties": { "Title": "Jamaica", "Șef de stat": "Regele Charles III", "iconUrl": "Uk.png", "Academic field": "Humanities and social sciences", "Profession": "archeology, history", "Universitatea": "Universitatea din Cambridge", "Gen": "Masculin", "Birth year ": 1948, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -77.297508, 18.109581 ] } },
+{ "type": "Feature", "properties": { "Title": "Noua Zeelandă", "Șef de stat": "Regele Charles III", "iconUrl": "Uk.png", "Academic field": "Humanities and social sciences", "Profession": "archeology, history", "Universitatea": "Universitatea din Cambridge", "Gen": "Masculin", "Birth year ": 1948, "Generația": "Baby Boomers", "Region": "Australia and Oceania" }, "geometry": { "type": "Point", "coordinates": [ 174.885971, -40.900557 ] } },
+{ "type": "Feature", "properties": { "Title": "Papua Noua Guinee", "Șef de stat": "Regele Charles III", "iconUrl": "Uk.png", "Academic field": "Humanities and social sciences", "Profession": "archeology, history", "Universitatea": "Universitatea din Cambridge", "Gen": "Masculin", "Birth year ": 1948, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 143.95555, -6.314993 ] } },
+{ "type": "Feature", "properties": { "Title": "Portugalia", "Șef de stat": "Președinte Marcelo Rebelo de Sousa", "iconUrl": "Portugal.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Universitatea din Lisabona", "Gen": "Masculin", "Birth year ": 1948, "Generația": "Baby Boomers", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ -8.224454, 39.399872 ] } },
+{ "type": "Feature", "properties": { "Title": "Saint Kitts și Nevis", "Șef de stat": "Regele Charles III", "iconUrl": "Uk.png", "Academic field": "Humanities and social sciences", "Profession": "archeology, history", "Universitatea": "Universitatea din Cambridge", "Gen": "Masculin", "Birth year ": 1948, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -62.782998, 17.357822 ] } },
+{ "type": "Feature", "properties": { "Title": "Sfânta Lucia", "Șef de stat": "Regele Charles III", "iconUrl": "Uk.png", "Academic field": "Humanities and social sciences", "Profession": "archeology, history", "Universitatea": "Universitatea din Cambridge", "Gen": "Masculin", "Birth year ": 1948, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -60.978893, 13.909444 ] } },
+{ "type": "Feature", "properties": { "Title": "Saint Vincent and the Grenadines", "Șef de stat": "Regele Charles III", "iconUrl": "Uk.png", "Academic field": "Humanities and social sciences", "Profession": "archeology, history", "Universitatea": "Universitatea din Cambridge", "Gen": "Masculin", "Birth year ": 1948, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -61.287228, 12.984305 ] } },
+{ "type": "Feature", "properties": { "Title": "Insulele Solomon", "Șef de stat": "Regele Charles III", "iconUrl": "Uk.png", "Academic field": "Humanities and social sciences", "Profession": "archeology, history", "Universitatea": "Universitatea din Cambridge", "Gen": "Masculin", "Birth year ": 1948, "Generația": "Baby Boomers", "Region": "Australia and Oceania" }, "geometry": { "type": "Point", "coordinates": [ 160.156194, -9.64571 ] } },
+{ "type": "Feature", "properties": { "Title": "Tuvalu", "Șef de stat": "Regele Charles III", "iconUrl": "Uk.png", "Academic field": "Humanities and social sciences", "Profession": "archeology, history", "Universitatea": "Universitatea din Cambridge", "Gen": "Masculin", "Birth year ": 1948, "Generația": "Baby Boomers", "Region": "Australia and Oceania" }, "geometry": { "type": "Point", "coordinates": [ 177.64933, -7.109535 ] } },
+{ "type": "Feature", "properties": { "Title": "Marea Britanie", "Șef de stat": "Regele Charles III", "iconUrl": "Uk.png", "Academic field": "Humanities and social sciences", "Profession": "archeology, history", "Universitatea": "Universitatea din Cambridge", "Gen": "Masculin", "Birth year ": 1948, "Generația": "Baby Boomers", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ -3.435973, 55.378051 ] } },
+{ "type": "Feature", "properties": { "Title": "Bangladesh", "Șef de stat": "Președinte Mohammed Shahabuddin Chuppu", "iconUrl": "Bangladesh.png", "Academic field": "Humanities and social sciences, Professions and applied sciences", "Profession": "psychology, law", "Universitatea": "Govt. Edward College, Pabna, Universitatea din Rajshahi și Shahid Aminuddin Law College", "Gen": "Masculin", "Birth year ": 1949, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 90.356331, 23.684994 ] } },
+{ "type": "Feature", "properties": { "Title": "Barbados", "Șef de stat": "Președinte Dame Sandra Mason", "iconUrl": "Barbados.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Universitatea din Indiile de Vest și Școala de Drept Hugh Wooding", "Gen": "Feminin", "Birth year ": 1949, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -59.543198, 13.193887 ] } },
+{ "type": "Feature", "properties": { "Title": "Timorul de Est", "Șef de stat": "Președinte Jose Ramos-Horta", "iconUrl": "Easttimor.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Academia de Drept Internațional de la Haga, Universitatea Antioch, Institutul Internațional privind Drepturile Omului din Strasbourg și Universitatea Columbia", "Gen": "Masculin", "Birth year ": 1949, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 125.727539, -8.874217 ] } },
+{ "type": "Feature", "properties": { "Title": "Haiti", "Șef de stat": "Președinte interimar Ariel Henry", "iconUrl": "Haiti.png", "Academic field": "Professions and applied sciences", "Profession": "medicine", "Universitatea": "Universitatea din Montpellier și Universitatea Loma Linda", "Gen": "Masculin", "Birth year ": 1949, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -72.285215, 18.971187 ] } },
+{ "type": "Feature", "properties": { "Title": "Pakistan", "Șef de stat": "Președinte Arif Alvi", "iconUrl": "Pakistan.png", "Academic field": "Professions and applied sciences", "Profession": "dentist", "Universitatea": "De'Montmorency College of Dentistry, Universitatea din Michigan, Universitatea Pacificului", "Gen": "Masculin", "Birth year ": 1949, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 69.345116, 30.375321 ] } },
+{ "type": "Feature", "properties": { "Title": "Sri Lanka", "Șef de stat": "Președinte Ranil Wickremesinghe", "iconUrl": "Srilanka.png", "Academic field": "Professions and applied sciences", "Profession": "law", "Universitatea": "Royal College Colombo, Universitatea din Ceylon", "Gen": "Masculin", "Birth year ": 1949, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 80.771797, 7.873054 ] } },
+{ "type": "Feature", "properties": { "Title": "Bahrain", "Șef de stat": "Regele Sheikh Hamad bin Isa Al Khalifa", "iconUrl": "Bahrain.png", "Academic field": "Professions and applied sciences", "Profession": "military", "Universitatea": "United States Army Command and General Staff College", "Gen": "Masculin", "Birth year ": 1950, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 50.637772, 25.930414 ] } },
+{ "type": "Feature", "properties": { "Title": "Ethiopia", "Șef de stat": "Președinte Sahle-Work Zewde", "iconUrl": "Ethiopia.png", "Academic field": "Natural sciences", "Profession": "natural science", "Universitatea": "Universitatea din Montpellier", "Gen": "Feminin", "Birth year ": 1950, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 40.489673, 9.145 ] } },
+{ "type": "Feature", "properties": { "Title": "Insulele Marshall", "Șef de stat": "Președinte David Kabua", "iconUrl": "Marshall.png", "Academic field": null, "Profession": null, "Universitatea": null, "Gen": "Masculin", "Birth year ": 1951, "Generația": "Baby Boomers", "Region": "Australia and Oceania" }, "geometry": { "type": "Point", "coordinates": [ 171.184478, 7.131474 ] } },
+{ "type": "Feature", "properties": { "Title": "Myanmar", "Șef de stat": "Președinte Myint Swe", "iconUrl": "Myanmar.png", "Academic field": "Professions and applied sciences", "Profession": "military", "Universitatea": "Academia de Apărare Myanmar", "Gen": "Masculin", "Birth year ": 1951, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 95.956223, 21.913965 ] } },
+{ "type": "Feature", "properties": { "Title": "Sudanul de Sud", "Șef de stat": "Președinte Salva Kiir Mayardit", "iconUrl": "Southsudan.png", "Academic field": null, "Profession": null, "Universitatea": null, "Gen": "Masculin", "Birth year ": 1951, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 31.306978, 6.876992 ] } },
+{ "type": "Feature", "properties": { "Title": "Georgia", "Șef de stat": "Președinte Salome Zourabichvili", "iconUrl": "Georgia.png", "Academic field": "Humanities and social sciences", "Profession": "political science", "Universitatea": "Institutul de Studii Politice din Paris și Universitatea Columbia", "Gen": "Feminin", "Birth year ": 1952, "Generația": "Baby Boomers", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 43.356892, 42.315407 ] } },
+{ "type": "Feature", "properties": { "Title": "Nigeria", "Șef de stat": "Președinte Bola Tinubu", "iconUrl": "Nigeria.png", "Academic field": "Professions and applied sciences", "Profession": "accounting", "Universitatea": "Universitatea din Chicago", "Gen": "Masculin", "Birth year ": 1952, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 8.675277, 9.081999 ] } },
+{ "type": "Feature", "properties": { "Title": "Rusia", "Șef de stat": "Președinte Vladimir Putin", "iconUrl": "Russia.png", "Academic field": "Humanities and social sciences, Professions and applied sciences", "Profession": "Law and economics", "Universitatea": "Universitatea de Stat din Sankt Petersburg și Universitatea Minieră din Sankt Petersburg", "Gen": "Masculin", "Birth year ": 1952, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 105.318756, 61.52401 ] } },
+{ "type": "Feature", "properties": { "Title": "Africa de Sud", "Șef de stat": "Președinte Cyril Ramaphosa", "iconUrl": "Southafrica.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Universitatea Nordului și Universitatea din Africa de Sud", "Gen": "Masculin", "Birth year ": 1952, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 22.937506, -30.559482 ] } },
+{ "type": "Feature", "properties": { "Title": "Tajikistan", "Șef de stat": "Președinte Emomali Rahmon", "iconUrl": "Tajikistan.png", "Academic field": "Humanities and social sciences", "Profession": "economics", "Universitatea": "Universitatea Națională de Stat Tajik", "Gen": "Masculin", "Birth year ": 1952, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 71.276093, 38.861034 ] } },
+{ "type": "Feature", "properties": { "Title": "Thailanda", "Șef de stat": "Regele Maha Vajiralongkorn", "iconUrl": "Thailand.png", "Academic field": "Professions and applied sciences", "Profession": "military, law", "Universitatea": "Colegiul Militar Regal Duntroon și Universitatea Sukhothai Thammathirat", "Gen": "Masculin", "Birth year ": 1952, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 100.992541, 15.870032 ] } },
+{ "type": "Feature", "properties": { "Title": "Cambodia", "Șef de stat": "Regele Norodom Sihamoni", "iconUrl": "Cambodia.png", "Academic field": "Humanities and social sciences", "Profession": "Performing arts", "Universitatea": "Academia de Arte ale Spectacolului din Praga", "Gen": "Masculin", "Birth year ": 1953, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 104.990963, 12.565679 ] } },
+{ "type": "Feature", "properties": { "Title": "China", "Șef de stat": "Președinte Xi Jinping", "iconUrl": "China.png", "Academic field": "Professions and applied sciences", "Profession": "chemical engineering", "Universitatea": "Universitatea Tsinghua", "Gen": "Masculin", "Birth year ": 1953, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 104.195397, 35.86166 ] } },
+{ "type": "Feature", "properties": { "Title": "Kazakhstan", "Șef de stat": "Președinte Qasym-Zhomart Toqaev", "iconUrl": "Kazakhstan.png", "Academic field": "Humanities and social sciences", "Profession": "International relations ", "Universitatea": "Institutul de Stat de Relații Internaționale din Moscova și Universitatea de Limbă și Cultură din Beijing", "Gen": "Masculin", "Birth year ": 1953, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 66.923684, 48.019573 ] } },
+{ "type": "Feature", "properties": { "Title": "Mexic", "Șef de stat": "Președinte Andres Manuel Lopez Obrador", "iconUrl": "Mexico.png", "Academic field": "Humanities and social sciences", "Profession": "political science", "Universitatea": "Universitatea Națională Autonomă din Mexic", "Gen": "Masculin", "Birth year ": 1953, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -102.552784, 23.634501 ] } },
+{ "type": "Feature", "properties": { "Title": "Panama", "Șef de stat": "Președinte Laurentino Cortizo", "iconUrl": "Panama.png", "Academic field": "Professions and applied sciences", "Profession": "military and business administration", "Universitatea": "Academia Militară Valley Forge din Pennsylvania, Universitatea Norwich și Universitatea din Texas", "Gen": "Masculin", "Birth year ": 1953, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -80.782127, 8.537981 ] } },
+{ "type": "Feature", "properties": { "Title": "Angola", "Șef de stat": "Președinte Joao Lourenco", "iconUrl": "Angola.png", "Academic field": "Professions and applied sciences", "Profession": "military", "Universitatea": "Institutul Industrial din Luanda și Academia Militară Politică Lenin", "Gen": "Masculin", "Birth year ": 1954, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 17.873887, -11.202692 ] } },
+{ "type": "Feature", "properties": { "Title": "Belarus", "Șef de stat": "Președinte Alexander Lukashenko", "iconUrl": "Belarus.png", "Academic field": "Humanities and social sciences", "Profession": "Economy", "Universitatea": "Universitatea Mogilev State A. Kuleshov și Academia Agricolă din Belarus", "Gen": "Masculin", "Birth year ": 1954, "Generația": "Baby Boomers", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 27.953389, 53.709807 ] } },
+{ "type": "Feature", "properties": { "Title": "Egipt", "Șef de stat": "Președinte Abdel Fattah el-Sisi", "iconUrl": "Egypt.png", "Academic field": "Professions and applied sciences", "Profession": "military", "Universitatea": "Academia Militară din Egipt, British Command and Staff College și United States Army War College", "Gen": "Masculin", "Birth year ": 1954, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 30.802498, 26.820553 ] } },
+{ "type": "Feature", "properties": { "Title": "Oman", "Șef de stat": "Sultan Haitham bin Tariq", "iconUrl": "Oman.png", "Academic field": "Professions and applied sciences", "Profession": "diplomacy", "Universitatea": "Universitatea din Cambridge și Universitatea din Oxford", "Gen": "Masculin", "Birth year ": 1954, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 55.923255, 21.512583 ] } },
+{ "type": "Feature", "properties": { "Title": "Singapore", "Șef de stat": "Președinte Halimah Yacob", "iconUrl": "Singapore.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Universitatea Națională din Singapore", "Gen": "Feminin", "Birth year ": 1954, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 103.819836, 1.352083 ] } },
+{ "type": "Feature", "properties": { "Title": "Turcia", "Șef de stat": "Președinte Recep Tayyip Erdogan", "iconUrl": "Turkey.png", "Academic field": "Professions and applied sciences", "Profession": "Business administration", "Universitatea": "Universitatea Marmara", "Gen": "Masculin", "Birth year ": 1954, "Generația": "Baby Boomers", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 35.243322, 38.963745 ] } },
+{ "type": "Feature", "properties": { "Title": "Yemen", "Șef de stat": "Președintele Consiliului de Conducere Prezidențial Rashad al-Alimi", "iconUrl": "Yemen.png", "Academic field": "Humanities and social sciences, Professions and applied sciences", "Profession": "Military sceience and socioliogy", "Universitatea": "Colegiul de Poliție din Kuwait, Universitatea din Sanaa și Universitatea Ain Shams", "Gen": "Masculin", "Birth year ": 1954, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 48.516388, 15.552727 ] } },
+{ "type": "Feature", "properties": { "Title": "Ecuador", "Șef de stat": "Președinte Guillermo Lasso", "iconUrl": "Ecuador.png", "Academic field": "no diploma", "Profession": "no diploma", "Universitatea": null, "Gen": "Masculin", "Birth year ": 1955, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -78.183406, -1.831239 ] } },
+{ "type": "Feature", "properties": { "Title": "Liban", "Șef de stat": "Președinte Najib Mikati", "iconUrl": null, "Academic field": "vacant", "Profession": "vacant", "Universitatea": "vacant", "Gen": "Masculin", "Birth year ": 1955, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 35.862285, 33.854721 ] } },
+{ "type": "Feature", "properties": { "Title": "Luxembourg", "Șef de stat": "Grand Duke Henri", "iconUrl": "Luxemburg.png", "Academic field": "Humanities and social sciences", "Profession": "political science", "Universitatea": "Academia Militară Sandhurst, Universitatea din Geneva și Institutul de Studii Internaționale din Geneva", "Gen": "Masculin", "Birth year ": 1955, "Generația": "Baby Boomers", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 6.129583, 49.815273 ] } },
+{ "type": "Feature", "properties": { "Title": "Malawi", "Șef de stat": "Președinte Lazarus Chakwera", "iconUrl": "Malawi.png", "Academic field": "Humanities and social sciences", "Profession": "philosophy", "Universitatea": "Universitatea din Malawi, Universitatea Nordului, Universitatea din Africa de Sud și Trinity International University", "Gen": "Masculin", "Birth year ": 1955, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 34.301525, -13.254308 ] } },
+{ "type": "Feature", "properties": { "Title": "Somalia", "Șef de stat": "Președinte Hassan Sheikh Mohamud", "iconUrl": "Somalia.png", "Academic field": "Professions and applied sciences", "Profession": "technical education", "Universitatea": "Universitatea Națională din Somalia, Universitatea Barkatullah, University for Peace", "Gen": "Masculin", "Birth year ": 1955, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 46.199616, 5.152149 ] } },
+{ "type": "Feature", "properties": { "Title": "Germania", "Șef de stat": "Președinte Frank-Walter Steinmeier", "iconUrl": "Germany.png", "Academic field": "Humanities and social sciences, Professions and applied sciences", "Profession": "Law and political science", "Universitatea": "Universitatea din Giessen", "Gen": "Masculin", "Birth year ": 1956, "Generația": "Baby Boomers", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 10.451526, 51.165691 ] } },
+{ "type": "Feature", "properties": { "Title": "Grecia", "Șef de stat": "Președinte Katerina Sakellaropoulou", "iconUrl": "Greece.png", "Academic field": "Professions and applied sciences", "Profession": "law", "Universitatea": "Universitatea Națională și Capodistriană din Atena și Universitatea din Paris Pantheon-Assas", "Gen": "Feminin", "Birth year ": 1956, "Generația": "Baby Boomers", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 21.824312, 39.074208 ] } },
+{ "type": "Feature", "properties": { "Title": "Guatemala", "Șef de stat": "Președinte Alejandro Giammattei", "iconUrl": "Guatemala.png", "Academic field": "Professions and applied sciences", "Profession": "medicine", "Universitatea": "Universitatea San Carlos Guatemala", "Gen": "Masculin", "Birth year ": 1956, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -90.230759, 15.783471 ] } },
+{ "type": "Feature", "properties": { "Title": "Mauritania", "Șef de stat": "Președinte Mohamed Ould Ghazouani", "iconUrl": "Mauritania.png", "Academic field": "Professions and applied sciences", "Profession": "administration military officer", "Universitatea": null, "Gen": "Masculin", "Birth year ": 1956, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ -10.940835, 21.00789 ] } },
+{ "type": "Feature", "properties": { "Title": "Republica central Africană", "Șef de stat": "Președinte Faustin-Archange Touadera", "iconUrl": "car.png", "Academic field": "Formal sciences", "Profession": "mathematics", "Universitatea": "Universitatea din Bangui, Universitatea din Abidjan, Universitatea de Știință și Tehnologie Lille și Universitatea din Yaounde", "Gen": "Masculin", "Birth year ": 1957, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 20.939444, 6.611111 ] } },
+{ "type": "Feature", "properties": { "Title": "Filipine", "Șef de stat": "Președinte Bongbong Marcos", "iconUrl": "Philippines.png", "Academic field": "no diploma", "Profession": "no diploma", "Universitatea": null, "Gen": "Masculin", "Birth year ": 1957, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 121.774017, 12.879721 ] } },
+{ "type": "Feature", "properties": { "Title": "Rwanda", "Șef de stat": "Președinte Paul Kagame", "iconUrl": "Rwanda.png", "Academic field": "Professions and applied sciences", "Profession": "military", "Universitatea": "Universitatea Makerere", "Gen": "Masculin", "Birth year ": 1957, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 29.873888, -1.940278 ] } },
+{ "type": "Feature", "properties": { "Title": "Uzbekistan", "Șef de stat": "Președinte Shavkat Mirziyoyev", "iconUrl": "Uzbekistan.png", "Academic field": "Professions and applied sciences", "Profession": "technological science", "Universitatea": "Institutul de Irigare Tashkent", "Gen": "Masculin", "Birth year ": 1957, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 64.585262, 41.377491 ] } },
+{ "type": "Feature", "properties": { "Title": "Benin", "Șef de stat": "Președinte Patrice Talon", "iconUrl": "Benin.png", "Academic field": "Professions and applied sciences", "Profession": "science", "Universitatea": "Universitatea din Dakar și Școala Națională de Aviație Civilă din Franța", "Gen": "Masculin", "Birth year ": 1958, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 2.315834, 9.30769 ] } },
+{ "type": "Feature", "properties": { "Title": "Estonia", "Șef de stat": "Președinte Alar Karis", "iconUrl": "Estonia.png", "Academic field": "Professions and applied sciences", "Profession": "agriculture", "Universitatea": "Academia Agricolă din Estonia", "Gen": "Masculin", "Birth year ": 1958, "Generația": "Baby Boomers", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 25.013607, 58.595272 ] } },
+{ "type": "Feature", "properties": { "Title": "India", "Șef de stat": "Președinte Droupadi Murmu", "iconUrl": "India.png", "Academic field": "Humanities and social sciences", "Profession": "political science", "Universitatea": "Universitatea pentru Femei Rama Devi", "Gen": "Feminin", "Birth year ": 1958, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 78.96288, 20.593684 ] } },
+{ "type": "Feature", "properties": { "Title": "Monaco", "Șef de stat": "Prințul Albert II", "iconUrl": "Monaco.png", "Academic field": "Humanities and social sciences", "Profession": "political science", "Universitatea": "Amherst College", "Gen": "Masculin", "Birth year ": 1958, "Generația": "Baby Boomers", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 7.412841, 43.750298 ] } },
+{ "type": "Feature", "properties": { "Title": "Tunisia", "Șef de stat": "Președinte Kais Saied", "iconUrl": "Tunisia.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Universitatea din Tunis și Institutul Internațional pentru Drept Umanitar", "Gen": "Masculin", "Birth year ": 1958, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 9.537499, 33.886917 ] } },
+{ "type": "Feature", "properties": { "Title": "Argentina", "Șef de stat": "Președinte Alberto Fernandez", "iconUrl": "Argentina.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Universitatea din Buenos Aires", "Gen": "Masculin", "Birth year ": 1959, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -63.616672, -38.416097 ] } },
+{ "type": "Feature", "properties": { "Title": "Armenia", "Șef de stat": "Președinte Vahagn Khachaturyan", "iconUrl": "Armenia.png", "Academic field": "Humanities and social sciences", "Profession": "Economist", "Universitatea": "Institutul Economic Național Yerevan", "Gen": "Masculin", "Birth year ": 1959, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 45.038189, 40.069099 ] } },
+{ "type": "Feature", "properties": { "Title": "Comoros", "Șef de stat": "Președinte Azali Assoumani", "iconUrl": "Comoros.png", "Academic field": "Professions and applied sciences", "Profession": "military", "Universitatea": "Academia Militară Regală din Maroc", "Gen": "Masculin", "Birth year ": 1959, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 43.872219, -11.875001 ] } },
+{ "type": "Feature", "properties": { "Title": "Gabon", "Șef de stat": "Președinte Ali Bongo Ondimba", "iconUrl": "Gabon.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Universitatea Pantheon-Sorbonne și Universitatea Wuhan din China", "Gen": "Masculin", "Birth year ": 1959, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 11.609444, -0.803689 ] } },
+{ "type": "Feature", "properties": { "Title": "Honduras", "Șef de stat": "Președinte Xiomara Castro", "iconUrl": "Honduras.png", "Academic field": "Professions and applied sciences", "Profession": "Business administration", "Universitatea": "Institutul pentru Cultură Inter-Americană din Honduras", "Gen": "Feminin", "Birth year ": 1959, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -86.241905, 15.199999 ] } },
+{ "type": "Feature", "properties": { "Title": "Malaysia", "Șef de stat": "Yang di-Pertuan Agong Abdullah Sultan Ahmad Shah", "iconUrl": "Malaysia.png", "Academic field": "Humanities and social sciences, Professions and applied sciences", "Profession": "international relations and military", "Universitatea": "Academia Militară Sandhurst, Universitatea din Oxford and Queen Elizabeth College", "Gen": "Masculin", "Birth year ": 1959, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 101.975766, 4.210484 ] } },
+{ "type": "Feature", "properties": { "Title": "Mauritius", "Șef de stat": "Președinte Prithvirajsing Roopun", "iconUrl": "Mauritius.png", "Academic field": "Professions and applied sciences", "Profession": "law", "Universitatea": "Universitatea Central Lancashire", "Gen": "Masculin", "Birth year ": 1959, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 57.552152, -20.348404 ] } },
+{ "type": "Feature", "properties": { "Title": "Mozambique", "Șef de stat": "Președinte Filipe Nyusi", "iconUrl": "Mozambique.png", "Academic field": "Professions and applied sciences", "Profession": "mechanic engineer", "Universitatea": "Universitatea de Apărare din Cehia", "Gen": "Masculin", "Birth year ": 1959, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 35.529562, -18.665695 ] } },
+{ "type": "Feature", "properties": { "Title": "România", "Șef de stat": "Președinte Klaus Iohannis", "iconUrl": "Romania.png", "Academic field": "Natural sciences", "Profession": "Physics", "Universitatea": "Universitatea Babes-Bolyai", "Gen": "Masculin", "Birth year ": 1959, "Generația": "Baby Boomers", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 24.96676, 45.943161 ] } },
+{ "type": "Feature", "properties": { "Title": "Sao Tome and Principe", "Șef de stat": "Președinte Carlos Vila Nova", "iconUrl": "Saotome.png", "Academic field": "Professions and applied sciences", "Profession": "telecommunications engineering", "Universitatea": "Universitatea din Oran", "Gen": "Masculin", "Birth year ": 1959, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 6.613081, 0.18636 ] } },
+{ "type": "Feature", "properties": { "Title": "Seychelles", "Șef de stat": "Președinte Wavel Ramkalawan", "iconUrl": "Seychelles.png", "Academic field": "Humanities and social sciences", "Profession": "theology", "Universitatea": "Colegiul Teologic St Paul din Mauritius și Universitatea din Birmingham", "Gen": "Masculin", "Birth year ": 1959, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 55.491977, -4.679574 ] } },
+{ "type": "Feature", "properties": { "Title": "Suriname", "Șef de stat": "Președinte Chan Santokhi", "iconUrl": "Suriname.png", "Academic field": "Professions and applied sciences", "Profession": "police", "Universitatea": "Academia de Poliție din Olanda", "Gen": "Masculin", "Birth year ": 1959, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -56.027783, 3.919305 ] } },
+{ "type": "Feature", "properties": { "Title": "Tonga", "Șef de stat": "Regele Tupou VI", "iconUrl": "Tonga.png", "Academic field": "Professions and applied sciences", "Profession": "Military and defence studies", "Universitatea": "University of East Anglia, US Naval War College, Universitatea din New South Wales și Bond University", "Gen": "Masculin", "Birth year ": 1959, "Generația": "Baby Boomers", "Region": "Australia and Oceania" }, "geometry": { "type": "Point", "coordinates": [ -175.198242, -21.178986 ] } },
+{ "type": "Feature", "properties": { "Title": "Belgia", "Șef de stat": "Regele Philippe", "iconUrl": "Belgium.png", "Academic field": "Humanities and social sciences, Professions and applied sciences", "Profession": "Military and political science", "Universitatea": "Academia Militară Regală Belgiană, Universitatea din Cambridge și Universitatea Stanford", "Gen": "Masculin", "Birth year ": 1960, "Generația": "Baby Boomers", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 4.469936, 50.503887 ] } },
+{ "type": "Feature", "properties": { "Title": "Cabo Verde", "Șef de stat": "Președinte Jose Maria Neves", "iconUrl": "Caboverde.png", "Academic field": "Professions and applied sciences", "Profession": "Administration and politics", "Universitatea": "Școala de Administrare a Afacerilor Sao Paulo", "Gen": "Masculin", "Birth year ": 1960, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ -24.013197, 16.002082 ] } },
+{ "type": "Feature", "properties": { "Title": "Columbia", "Șef de stat": "Președinte Gustavo Petro", "iconUrl": "Columbia.png", "Academic field": "Humanities and social sciences", "Profession": "economy", "Universitatea": "Universidad Externado de Colombia, Școala Superioară de Administrație Publică, Universitatea Catolică din Louvain și Universitatea din Salamanca", "Gen": "Masculin", "Birth year ": 1960, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -74.297333, 4.570868 ] } },
+{ "type": "Feature", "properties": { "Title": "Cuba", "Șef de stat": "Miguel Diaz-Canel", "iconUrl": "Cuba.png", "Academic field": "Professions and applied sciences", "Profession": "electronic engineering", "Universitatea": "Universitatea Centrală din Las Villas", "Gen": "Masculin", "Birth year ": 1960, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -77.781167, 21.521757 ] } },
+{ "type": "Feature", "properties": { "Title": "Israel", "Șef de stat": "Președinte Isaac Herzog", "iconUrl": "Israel.png", "Academic field": "Professions and applied sciences", "Profession": "law", "Universitatea": "Universitatea Cornell, Universitatea din New York și Universitatea din Tel Aviv", "Gen": "Masculin", "Birth year ": 1960, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 34.851612, 31.046051 ] } },
+{ "type": "Feature", "properties": { "Title": "Japonia", "Șef de stat": "Împăratul Naruhito", "iconUrl": "Jadjan.png", "Academic field": "Humanities and social sciences", "Profession": "history and english", "Universitatea": "Universitatea Gakushuin, Universitatea din Oxford", "Gen": "Masculin", "Birth year ": 1960, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 138.252924, 36.204824 ] } },
+{ "type": "Feature", "properties": { "Title": "Kiribati", "Șef de stat": "Președinte Taneti Maamau", "iconUrl": "Kiribatdjan.png", "Academic field": "Humanities and social sciences", "Profession": "sociology and administration, economics", "Universitatea": "Universitatea din Pacificul de Sud, Universitatea din Sydney și Universitatea din Queensland", "Gen": "Masculin", "Birth year ": 1960, "Generația": "Baby Boomers", "Region": "Australia and Oceania" }, "geometry": { "type": "Point", "coordinates": [ -168.734039, -3.370417 ] } },
+{ "type": "Feature", "properties": { "Title": "Niger", "Șef de stat": "Președinte Abdourahamane Tchiani", "iconUrl": "Niger.png", "Academic field": "Professions and applied sciences", "Profession": "military", "Universitatea": "Academia Militară din Thies, Senegal", "Gen": "Masculin", "Birth year ": 1960, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 8.081666, 17.607789 ] } },
+{ "type": "Feature", "properties": { "Title": "Coreea de Sud", "Șef de stat": "Președinte Yoon Suk-yeol", "iconUrl": "Southkorea.png", "Academic field": "Professions and applied sciences", "Profession": "law", "Universitatea": "Universitatea Națională din Seoul", "Gen": "Masculin", "Birth year ": 1960, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 127.766922, 35.907757 ] } },
+{ "type": "Feature", "properties": { "Title": "Sudan", "Șef de stat": "Președintele Consiliului de Suveranitate de Tranziție Abdel Fattah al-Burhan", "iconUrl": "Sudan.png", "Academic field": "Professions and applied sciences", "Profession": "military", "Universitatea": "Colegiul Militar Sudanez", "Gen": "Masculin", "Birth year ": 1960, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 30.217636, 12.862807 ] } },
+{ "type": "Feature", "properties": { "Title": "Tanzania", "Șef de stat": "Președinte Samia Suluhu Hassan", "iconUrl": "Tanzania.png", "Academic field": "Humanities and social sciences, Professions and applied sciences", "Profession": "economy and public admiistration", "Universitatea": "Universitatea Mzumbe și Universitatea din Manchester", "Gen": "Feminin", "Birth year ": 1960, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 34.888822, -6.369028 ] } },
+{ "type": "Feature", "properties": { "Title": "Afganistan", "Șef de stat": "Liderul Suprem Hibatullah Akhundzada", "iconUrl": "Afghanistan.png", "Academic field": null, "Profession": null, "Universitatea": null, "Gen": "Masculin", "Birth year ": 1961, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 67.709953, 33.93911 ] } },
+{ "type": "Feature", "properties": { "Title": "Azerbaijan", "Șef de stat": "Președinte Ilham Aliyev", "iconUrl": "Azerbaidjan.png", "Academic field": "Humanities and social sciences", "Profession": "International relations and history", "Universitatea": "Institutul de Stat de Relații Internaționale din Moscova", "Gen": "Masculin", "Birth year ": 1961, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 47.576927, 40.143105 ] } },
+{ "type": "Feature", "properties": { "Title": "Botswana", "Șef de stat": "Președinte Mokgweetsi Masisi", "iconUrl": "Botswana.png", "Academic field": "Humanities and social sciences", "Profession": "history and social science", "Universitatea": "Universitatea din Botswana și Universitatea de Stat din Florida", "Gen": "Masculin", "Birth year ": 1961, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 24.684866, -22.328474 ] } },
+{ "type": "Feature", "properties": { "Title": "Costa Rica", "Șef de stat": "Președinte Rodrigo Chaves Robles", "iconUrl": "Costrica.png", "Academic field": "Humanities and social sciences", "Profession": "economy", "Universitatea": "Universitatea de Stat din Ohio", "Gen": "Masculin", "Birth year ": 1961, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -83.753428, 9.748917 ] } },
+{ "type": "Feature", "properties": { "Title": "Cehia", "Șef de stat": "Președinte Petr Pavel", "iconUrl": "Czechia.png", "Academic field": "Professions and applied sciences", "Profession": "military", "Universitatea": "Universitatea Militară a forțelor terestre din Vyskov, Academia Militară din Brno și King's College London", "Gen": "Masculin", "Birth year ": 1961, "Generația": "Baby Boomers", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 15.472962, 49.817492 ] } },
+{ "type": "Feature", "properties": { "Title": "Indonezia", "Șef de stat": "Președinte Joko Widodo", "iconUrl": "Indonesia.png", "Academic field": "Professions and applied sciences", "Profession": "forestry engineering", "Universitatea": "Universitatea Gadjah Mada", "Gen": "Masculin", "Birth year ": 1961, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 113.921327, -0.789275 ] } },
+{ "type": "Feature", "properties": { "Title": "Micronezia", "Șef de stat": "Președinte Wesley Simina", "iconUrl": "Micronesia.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Universitatea Internațională a Statelor Unite și Universitatea din Hawaii", "Gen": "Masculin", "Birth year ": 1961, "Generația": "Baby Boomers", "Region": "Australia and Oceania" }, "geometry": { "type": "Point", "coordinates": [ 150.550812, 7.425554 ] } },
+{ "type": "Feature", "properties": { "Title": "Senegal", "Șef de stat": "Președinte Macky Sall", "iconUrl": "Senegal.png", "Academic field": "Professions and applied sciences", "Profession": "geologocal engineer", "Universitatea": "Universitatea din Dakar și Colegiul Național de Petrol Paris", "Gen": "Masculin", "Birth year ": 1961, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ -14.452362, 14.497401 ] } },
+{ "type": "Feature", "properties": { "Title": "Trinidad Tobago", "Șef de stat": "Președinte Christine Kangaloo", "iconUrl": "Trinidadtobago.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Universitatea din Indiile de Vest și Școala de Drept Hugh Wooding", "Gen": "Feminin", "Birth year ": 1961, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -61.222503, 10.691803 ] } },
+{ "type": "Feature", "properties": { "Title": "Emiratele Arabe Unite", "Șef de stat": "Președinte Sheikh Mohamed bin Zayed Al Nahyan", "iconUrl": "Uae.png", "Academic field": "Professions and applied sciences", "Profession": "military", "Universitatea": "Academia Militară Sandhurst", "Gen": "Masculin", "Birth year ": 1961, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 53.847818, 23.424076 ] } },
+{ "type": "Feature", "properties": { "Title": "Iordania", "Șef de stat": "Regele Abdullah II", "iconUrl": "Jordan.png", "Academic field": "Professions and applied sciences", "Profession": "military", "Universitatea": "Academia Militară Sandhurst", "Gen": "Masculin", "Birth year ": 1962, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 36.238414, 30.585164 ] } },
+{ "type": "Feature", "properties": { "Title": "Maldive", "Șef de stat": "Președinte Ibrahim Mohamed Solih", "iconUrl": "Maldives.png", "Academic field": "no diploma", "Profession": "no diploma", "Universitatea": null, "Gen": "Masculin", "Birth year ": 1962, "Generația": "Baby Boomers", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 73.22068, 3.202778 ] } },
+{ "type": "Feature", "properties": { "Title": "Muntenegru", "Șef de stat": "Președinte Milo Dukanovic", "iconUrl": "Montenegro.png", "Academic field": "Humanities and social sciences", "Profession": "economics", "Universitatea": "Universitatea din Muntenegru and Universitatea din Oxford", "Gen": "Masculin", "Birth year ": 1962, "Generația": "Baby Boomers", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 19.37439, 42.708678 ] } },
+{ "type": "Feature", "properties": { "Title": "Peru", "Șef de stat": "Președinte Dina Boluarte", "iconUrl": "Peru.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Universitatea din San Martin de Porres", "Gen": "Feminin", "Birth year ": 1962, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -75.015152, -9.189967 ] } },
+{ "type": "Feature", "properties": { "Title": "Venezuela", "Șef de stat": "Președinte Nicolas Maduro", "iconUrl": "Venezuela.png", "Academic field": "no diploma", "Profession": "no diploma", "Universitatea": null, "Gen": "Masculin", "Birth year ": 1962, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -66.58973, 6.42375 ] } },
+{ "type": "Feature", "properties": { "Title": "Zambia", "Șef de stat": "Președinte Hakainde Hichilema", "iconUrl": "Zambia.png", "Academic field": "Humanities and social sciences", "Profession": "Economics and business", "Universitatea": "Universitatea din Zambia și Universitatea din Birmingham", "Gen": "Masculin", "Birth year ": 1962, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 27.849332, -13.133897 ] } },
+{ "type": "Feature", "properties": { "Title": "Bolivia", "Șef de stat": "Președinte Luis Arce", "iconUrl": "Bolivia.png", "Academic field": "Humanities and social sciences", "Profession": "economy", "Universitatea": "Universitatea din San Andres și Universitatea din Warwick", "Gen": "Masculin", "Birth year ": 1963, "Generația": "Baby Boomers", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -63.588653, -16.290154 ] } },
+{ "type": "Feature", "properties": { "Title": "Bulgaria", "Șef de stat": "Președinte Rumen Radev", "iconUrl": "Bulgaria.png", "Academic field": "Professions and applied sciences", "Profession": "military", "Universitatea": "Universitatea Forțelor Aeriene din Bulgaria, Școala de Ofițeri Squadron, Colegiul de Apărare Rakovski și Air Universitaty US", "Gen": "Masculin", "Birth year ": 1963, "Generația": "Baby Boomers", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 25.48583, 42.733883 ] } },
+{ "type": "Feature", "properties": { "Title": "Republica Democrată Congo", "Șef de stat": "Președinte Felix Tshisekedi", "iconUrl": "Congodemocraticrepublic.png", "Academic field": null, "Profession": null, "Universitatea": null, "Gen": "Masculin", "Birth year ": 1963, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 21.758664, -4.038333 ] } },
+{ "type": "Feature", "properties": { "Title": "Lesotho", "Șef de stat": "Regele Letsie III", "iconUrl": "Lesotho.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Universitatea Națională din Lesotho", "Gen": "Masculin", "Birth year ": 1963, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 28.233608, -29.609988 ] } },
+{ "type": "Feature", "properties": { "Title": "Maroc", "Șef de stat": "Regele Mohammed VI", "iconUrl": "Morocco.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Universitatea Mohammed V din Agdal", "Gen": "Masculin", "Birth year ": 1963, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ -7.09262, 31.791702 ] } },
+{ "type": "Feature", "properties": { "Title": "Macedonia de Nord", "Șef de stat": "Președinte Stevo Pendarovski", "iconUrl": "Macedonia.png", "Academic field": "Humanities and social sciences, Professions and applied sciences", "Profession": "Law and political science", "Universitatea": "Universitatea Ss. Cyril și Methodius din Skopje", "Gen": "Masculin", "Birth year ": 1963, "Generația": "Baby Boomers", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 21.745275, 41.608635 ] } },
+{ "type": "Feature", "properties": { "Title": "Fiji", "Șef de stat": "Președinte Ratu Wiliame Katonivere", "iconUrl": "Fiji.png", "Academic field": null, "Profession": null, "Universitatea": null, "Gen": "Masculin", "Birth year ": 1964, "Generația": "Baby Boomers", "Region": "Australia and Oceania" }, "geometry": { "type": "Point", "coordinates": [ 179.414413, -16.578193 ] } },
+{ "type": "Feature", "properties": { "Title": "Lituania", "Șef de stat": "Președinte Gitanas Nauseda", "iconUrl": "Lithuania.png", "Academic field": "Humanities and social sciences", "Profession": "economics", "Universitatea": "Universitatea din Vilnius", "Gen": "Masculin", "Birth year ": 1964, "Generația": "Baby Boomers", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 23.881275, 55.169438 ] } },
+{ "type": "Feature", "properties": { "Title": "Sierra Leone", "Șef de stat": "Președinte Julius Maada Bio", "iconUrl": "Sierraleone.png", "Academic field": "Professions and applied sciences", "Profession": "Military, international studies", "Universitatea": "Academia Militară din Sierra Leone, Universitatea Americană din Washington, DC și Universitatea din Bradford", "Gen": "Masculin", "Birth year ": 1964, "Generația": "Baby Boomers", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ -11.779889, 8.460555 ] } },
+{ "type": "Feature", "properties": { "Title": "Vanuatu", "Șef de stat": "Președinte Nikenike Vurobaravu", "iconUrl": "Vanuatu.png", "Academic field": "Professions and applied sciences", "Profession": "diplomacy, international studies", "Universitatea": "Universitatea Pacificului de Sud și Universitatea din Westminster", "Gen": "Masculin", "Birth year ": 1964, "Generația": "Baby Boomers", "Region": "Australia and Oceania" }, "geometry": { "type": "Point", "coordinates": [ 166.959158, -15.376706 ] } },
+{ "type": "Feature", "properties": { "Title": "Gambia", "Șef de stat": "Președinte Adama Barrow", "iconUrl": "Gambia.png", "Academic field": "no diploma", "Profession": "no diploma", "Universitatea": null, "Gen": "Masculin", "Birth year ": 1965, "Generația": "Generația X", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ -15.310139, 13.443182 ] } },
+{ "type": "Feature", "properties": { "Title": "Siria", "Șef de stat": "Președinte Bashar al-Assad", "iconUrl": "Syria.png", "Academic field": "Professions and applied sciences", "Profession": "medicine", "Universitatea": "Universitatea din Damasc", "Gen": "Masculin", "Birth year ": 1965, "Generația": "Generația X", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 38.996815, 34.802075 ] } },
+{ "type": "Feature", "properties": { "Title": "Croatia", "Șef de stat": "Președinte Zoran Milanovic", "iconUrl": "Croatia.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Universitatea din Zagreb, Universitatea Liberă din Bruxelles", "Gen": "Masculin", "Birth year ": 1966, "Generația": "Generația X", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 15.2, 45.1 ] } },
+{ "type": "Feature", "properties": { "Title": "Kenya", "Șef de stat": "Președinte William Ruto", "iconUrl": "Kenya.png", "Academic field": "Natural sciences", "Profession": "Botany and zoology", "Universitatea": "Universitatea din Nairobi", "Gen": "Masculin", "Birth year ": 1966, "Generația": "Generația X", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 37.906193, -0.023559 ] } },
+{ "type": "Feature", "properties": { "Title": "Liberia", "Șef de stat": "Președinte George Weah", "iconUrl": "Liberia.png", "Academic field": "Professions and applied sciences", "Profession": "Business administration", "Universitatea": "Universitatea DeVry ", "Gen": "Masculin", "Birth year ": 1966, "Generația": "Generația X", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ -9.429499, 6.428055 ] } },
+{ "type": "Feature", "properties": { "Title": "Togo", "Șef de stat": "Președinte Faure Gnassingbe", "iconUrl": "Togo.png", "Academic field": "Professions and applied sciences", "Profession": "Finance, business administration", "Universitatea": "Universitatea Paris Dauphine și Universitatea George Washington ", "Gen": "Masculin", "Birth year ": 1966, "Generația": "Generația X", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 0.824782, 8.619543 ] } },
+{ "type": "Feature", "properties": { "Title": "Albania", "Șef de stat": "Președinte Bajram Begaj", "iconUrl": "Albania.png", "Academic field": "Professions and applied sciences", "Profession": "military", "Universitatea": "Universitatea de Medicină din Tirana", "Gen": "Masculin", "Birth year ": 1967, "Generația": "Generația X", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 20.168331, 41.153332 ] } },
+{ "type": "Feature", "properties": { "Title": "Bosnia și Herzegovina", "Șef de stat": "Zeljka Cvijanovic", "iconUrl": "Bosnia.png", "Academic field": "Professions and applied sciences, Humanities and social sciences", "Profession": "philosophy and law", "Universitatea": "Universitatea din Sarajevo și Universitatea din Banja Luka", "Gen": "Feminin", "Birth year ": 1967, "Generația": "Generația X", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 17.679076, 43.915886 ] } },
+{ "type": "Feature", "properties": { "Title": "Republica Dominicană", "Șef de stat": "Președinte Luis Abinader", "iconUrl": "Dominicanrep.png", "Academic field": "Humanities and social sciences", "Profession": "economics", "Universitatea": "Institutul Tehnologic din Santo Domingo, Hult International Business School Cambridge, Massachusetts", "Gen": "Masculin", "Birth year ": 1967, "Generația": "Generația X", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -70.162651, 18.735693 ] } },
+{ "type": "Feature", "properties": { "Title": "Olanda", "Șef de stat": "Regele Willem-Alexander", "iconUrl": "Netherlands.png", "Academic field": "Humanities and social sciences", "Profession": "history", "Universitatea": "Universitatea Leiden", "Gen": "Masculin", "Birth year ": 1967, "Generația": "Generația X", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 5.291266, 52.132633 ] } },
+{ "type": "Feature", "properties": { "Title": "Burundi", "Șef de stat": "Președinte Evariste Ndayishimiye", "iconUrl": "Burundi.png", "Academic field": "Professions and applied sciences", "Profession": "law", "Universitatea": "Universitatea din Burundi", "Gen": "Masculin", "Birth year ": 1968, "Generația": "Generația X", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 29.918886, -3.373056 ] } },
+{ "type": "Feature", "properties": { "Title": "Eswatini", "Șef de stat": "Regele Mswati III", "iconUrl": "Eswatini.png", "Academic field": null, "Profession": null, "Universitatea": null, "Gen": "Masculin", "Birth year ": 1968, "Generația": "Generația X", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 28.05147, -25.472811 ] } },
+{ "type": "Feature", "properties": { "Title": "Islanda", "Șef de stat": "Președinte Gudni Th. Johannesson", "iconUrl": "Iceland.png", "Academic field": "Humanities and social sciences", "Profession": "history and political science", "Universitatea": "Universitatea din Warwick, Universitatea din Islanda, Universitatea din Oxford și Queen Mary University din Londra", "Gen": "Masculin", "Birth year ": 1968, "Generația": "Generația X", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ -19.020835, 64.963051 ] } },
+{ "type": "Feature", "properties": { "Title": "Kyrgyzstan", "Șef de stat": "Președinte Sadyr Japarov", "iconUrl": "Kyrgyzstan.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Kyrgyz-Russian Slavic University", "Gen": "Masculin", "Birth year ": 1968, "Generația": "Generația X", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 74.766098, 41.20438 ] } },
+{ "type": "Feature", "properties": { "Title": "Mongolia", "Șef de stat": "Președinte Ukhnaagiin Khurelsukh", "iconUrl": "Mongolia.png", "Academic field": "Humanities and social sciences", "Profession": "political science and law", "Universitatea": "Universitatea de Apărare din Mongolia, Institute of State Administration and Management Development and National Universitatea din Mongolia", "Gen": "Masculin", "Birth year ": 1968, "Generația": "Generația X", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 103.846656, 46.862496 ] } },
+{ "type": "Feature", "properties": { "Title": "Palau", "Șef de stat": "Președinte Surangel Whipps Jr.", "iconUrl": "Palau.png", "Academic field": "Professions and applied sciences", "Profession": "Business administration and economics", "Universitatea": "Universitatea Andrews, Universitatea din California", "Gen": "Masculin", "Birth year ": 1968, "Generația": "Generația X", "Region": "Australia and Oceania" }, "geometry": { "type": "Point", "coordinates": [ 134.58252, 7.51498 ] } },
+{ "type": "Feature", "properties": { "Title": "Slovenia", "Șef de stat": "Președinte Natasa Pirc Musar", "iconUrl": "Slovenia.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Universitatea din Ljubljana și Universitatea din Viena", "Gen": "Feminin", "Birth year ": 1968, "Generația": "Generația X", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 14.995463, 46.151241 ] } },
+{ "type": "Feature", "properties": { "Title": "Spania", "Șef de stat": "Regele Felipe VI", "iconUrl": "Spain.png", "Academic field": "Professions and applied sciences", "Profession": "Law and military", "Universitatea": "Universitatea Autonomă din Madrid, Universitatea Georgetown și Academia Militară din Zaragoza", "Gen": "Masculin", "Birth year ": 1968, "Generația": "Generația X", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ -3.74922, 40.463667 ] } },
+{ "type": "Feature", "properties": { "Title": "Serbia", "Șef de stat": "Președinte Aleksandar Vucic", "iconUrl": "Serbia.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Universitatea din Belgrad", "Gen": "Masculin", "Birth year ": 1970, "Generația": "Generația X", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 21.005859, 44.016521 ] } },
+{ "type": "Feature", "properties": { "Title": "Vietnam", "Șef de stat": "Președinte Vo Van Thuong", "iconUrl": "Vietnam.png", "Academic field": "Humanities and social sciences", "Profession": "philosophy", "Universitatea": "Universitatea din Ho Chi Minh, Universitatea de Științe Sociale și Umaniste din Ho Chi Minh și Academia Politică Națională Ho Chi Minh", "Gen": "Masculin", "Birth year ": 1970, "Generația": "Generația X", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 108.277199, 14.058324 ] } },
+{ "type": "Feature", "properties": { "Title": "Paraguay", "Șef de stat": "Președinte Mario Abdo Benitez", "iconUrl": "Paraguay.png", "Academic field": "Professions and applied sciences", "Profession": "marketing", "Universitatea": "Universitatea Teikyo Post din Waterbury", "Gen": "Masculin", "Birth year ": 1971, "Generația": "Generația X", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -58.443832, -23.442503 ] } },
+{ "type": "Feature", "properties": { "Title": "Guinea Bissau", "Șef de stat": "Președinte Umaro Sissoco Embalo", "iconUrl": "Guineabissau.png", "Academic field": "Humanities and social sciences", "Profession": "political science", "Universitatea": "Universitatea Tehnică din Lisabona, Universitatea Complutense", "Gen": "Masculin", "Birth year ": 1972, "Generația": "Generația X", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ -15.180413, 11.803749 ] } },
+{ "type": "Feature", "properties": { "Title": "Moldova", "Șef de stat": "Președinte Maia Sandu", "iconUrl": "Moldova.png", "Academic field": "Professions and applied sciences, Humanities and social sciences", "Profession": "international relations and management", "Universitatea": "Academia de Studii Economice a Moldovei, Academia de Administrare Publică de pe lângă Președintele Republicii Modova, Harvard Kennedy School", "Gen": "Feminin", "Birth year ": 1972, "Generația": "Generația X", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 28.369885, 47.411631 ] } },
+{ "type": "Feature", "properties": { "Title": "Polonia", "Șef de stat": "Președinte Andrzej Duda", "iconUrl": "Poland.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Universitatea Jagiellonian", "Gen": "Masculin", "Birth year ": 1972, "Generația": "Generația X", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 19.145136, 51.919438 ] } },
+{ "type": "Feature", "properties": { "Title": "Elveția", "Șef de stat": "Federal Council Președinte Alain Berset", "iconUrl": "Switzerland.png", "Academic field": "Humanities and social sciences", "Profession": "Political science and economics", "Universitatea": "Universitatea din Neuchatel", "Gen": "Masculin", "Birth year ": 1972, "Generația": "Generația X", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 8.227512, 46.818188 ] } },
+{ "type": "Feature", "properties": { "Title": "Cipru", "Șef de stat": "Președinte Nikos Christodoulides", "iconUrl": "Cyprus.png", "Academic field": "Humanities and social sciences", "Profession": "political science", "Universitatea": "Queens College, City University of New York, Universitatea din New York, Universitatea din Malta și Universitatea din Atena", "Gen": "Masculin", "Birth year ": 1973, "Generația": "Generația X", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 33.429859, 35.126413 ] } },
+{ "type": "Feature", "properties": { "Title": "Letonia", "Șef de stat": "Președinte Edgars Rinkevics", "iconUrl": "Latvia.png", "Academic field": "Humanities and social sciences", "Profession": "political science", "Universitatea": "Universitatea din Letonia, Dwight D. Eisenhower School for National Security and Resource Strategy", "Gen": "Masculin", "Birth year ": 1973, "Generația": "Generația X", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 24.603189, 56.879635 ] } },
+{ "type": "Feature", "properties": { "Title": "Slovacia", "Șef de stat": "Președinte Zuzana Caputova", "iconUrl": "Slovakia.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Universitatea Comenius", "Gen": "Feminin", "Birth year ": 1973, "Generația": "Generația X", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 19.699024, 48.669026 ] } },
+{ "type": "Feature", "properties": { "Title": "Uruguay", "Șef de stat": "Președinte Luis Lacalle Pou", "iconUrl": "Uruguay.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Universitatea Catolică din Uruguay", "Gen": "Masculin", "Birth year ": 1973, "Generația": "Generația X", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -55.765835, -32.522779 ] } },
+{ "type": "Feature", "properties": { "Title": "Madagascar", "Șef de stat": "Președinte Andry Rajoelina", "iconUrl": "Madagascar.png", "Academic field": "no diploma", "Profession": "no diploma", "Universitatea": null, "Gen": "Masculin", "Birth year ": 1974, "Generația": "Generația X", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 46.869107, -18.766947 ] } },
+{ "type": "Feature", "properties": { "Title": "Nauru", "Șef de stat": "Președinte Russ Kun", "iconUrl": "Nauru.png", "Academic field": null, "Profession": null, "Universitatea": null, "Gen": "Masculin", "Birth year ": 1975, "Generația": "Generația X", "Region": "Australia and Oceania" }, "geometry": { "type": "Point", "coordinates": [ 166.931503, -0.522778 ] } },
+{ "type": "Feature", "properties": { "Title": "Libya", "Șef de stat": "Președinte al Consiliului Prezidențial Mohamed al-Menfi", "iconUrl": "Libya.png", "Academic field": null, "Profession": null, "Universitatea": null, "Gen": "Masculin", "Birth year ": 1976, "Generația": "Generația X", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 17.228331, 26.3351 ] } },
+{ "type": "Feature", "properties": { "Title": "Franța", "Șef de stat": "Președinte Emmanuel Macron", "iconUrl": "France.png", "Academic field": "Professions and applied sciences", "Profession": "Administration and politics", "Universitatea": "Universitatea Paris-Ouest Nanterre, Institutul de Studii Politice din Paris, Școala Națională de Administrație din Franța", "Gen": "Masculin", "Birth year ": 1977, "Generația": "Generația X", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 2.213749, 46.227638 ] } },
+{ "type": "Feature", "properties": { "Title": "Ungaria", "Șef de stat": "Președinte Katalin Novak", "iconUrl": "Hungary.png", "Academic field": "Professions and applied sciences, Humanities and social sciences", "Profession": "Economics and law", "Universitatea": "Universitatea Corvinus din Budapesta și Universitatea din Szeged", "Gen": "Feminin", "Birth year ": 1977, "Generația": "Generația X", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 19.503304, 47.162494 ] } },
+{ "type": "Feature", "properties": { "Title": "Ucraina", "Șef de stat": "Președinte Volodymyr Zelenskyy", "iconUrl": "Ukraine.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Universitatea Națională de Economie din Kiev", "Gen": "Masculin", "Birth year ": 1978, "Generația": "Generația X", "Region": "Europe" }, "geometry": { "type": "Point", "coordinates": [ 31.16558, 48.379433 ] } },
+{ "type": "Feature", "properties": { "Title": "Bhutan", "Șef de stat": "Regele Jigme Khesar Namgyel Wangchuck", "iconUrl": "Bhutan.png", "Academic field": "Professions and applied sciences", "Profession": "diplomatic studies", "Universitatea": "Wheaton College Massachusetts, Universitatea din Oxford", "Gen": "Masculin", "Birth year ": 1980, "Generația": "Generația X", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 90.433601, 27.514162 ] } },
+{ "type": "Feature", "properties": { "Title": "Guinea", "Șef de stat": "Președintele Comitetului Național pentru Reconciliere și Dezvoltare Mamady Doumbouya", "iconUrl": "Guinea.png", "Academic field": "Professions and applied sciences", "Profession": "military", "Universitatea": "Academia Internațională de Securitate din Israel, Universitatea din Paris Pantheon-Assas", "Gen": "Masculin", "Birth year ": 1980, "Generația": "Generația X", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ -9.696645, 9.945587 ] } },
+{ "type": "Feature", "properties": { "Title": "Guyana", "Șef de stat": "Președinte Irfaan Ali", "iconUrl": "Guyana.png", "Academic field": "Humanities and social sciences", "Profession": "Planning and development", "Universitatea": "Institutul Național de Economie  Muncii, Universitatea Guru Gobind Singh Indraprastha și Universitatea din Indiile de Vest", "Gen": "Masculin", "Birth year ": 1980, "Generația": "Generația X", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -58.93018, 4.860416 ] } },
+{ "type": "Feature", "properties": { "Title": "Qatar", "Șef de stat": "Emir Tamim bin Hamad Al Thani", "iconUrl": "Qatar.png", "Academic field": "Professions and applied sciences", "Profession": "military", "Universitatea": "Academia Militară Sandhurst", "Gen": "Masculin", "Birth year ": 1980, "Generația": "Generația X", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 51.183884, 25.354826 ] } },
+{ "type": "Feature", "properties": { "Title": "El Salvador", "Șef de stat": "Președinte Nayib Bukele", "iconUrl": "Elsalvador.png", "Academic field": "no diploma", "Profession": "no diploma", "Universitatea": null, "Gen": "Masculin", "Birth year ": 1981, "Generația": "Millennials", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -88.89653, 13.794185 ] } },
+{ "type": "Feature", "properties": { "Title": "Turkmenistan", "Șef de stat": "Președinte Serdar Berdimuhamedow", "iconUrl": "Turkmenistan.png", "Academic field": "Professions and applied sciences", "Profession": "engineer technologist", "Universitatea": "Universitatea Agricolă Turkmen", "Gen": "Masculin", "Birth year ": 1981, "Generația": "Millennials", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 59.556278, 38.969719 ] } },
+{ "type": "Feature", "properties": { "Title": "Coreea de Nord", "Șef de stat": "Liderul Suprem Kim Jong-un", "iconUrl": "Northkorea.png", "Academic field": "Natural sciences, Professions and applied sciences", "Profession": "physics and military", "Universitatea": "Universitatea Kim Il Sung, Academia Militară Kim Il Sung", "Gen": "Masculin", "Birth year ": 1982, "Generația": "Millennials", "Region": "Asia" }, "geometry": { "type": "Point", "coordinates": [ 127.510093, 40.339852 ] } },
+{ "type": "Feature", "properties": { "Title": "Mali", "Șef de stat": "Președinte interimar Assimi Goita", "iconUrl": "Mali.png", "Academic field": "Professions and applied sciences", "Profession": "military", "Universitatea": "Școala Militară Koulikoro", "Gen": "Masculin", "Birth year ": 1983, "Generația": "Millennials", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ -3.996166, 17.570692 ] } },
+{ "type": "Feature", "properties": { "Title": "Chad", "Șef de stat": "Președinte de tranziție Mahamat Deby", "iconUrl": "Chad.png", "Academic field": "Professions and applied sciences", "Profession": "military", "Universitatea": "Școli militare în Chad și Școala Militară din Aix-en-Provence", "Gen": "Masculin", "Birth year ": 1984, "Generația": "Millennials", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ 18.732207, 15.454166 ] } },
+{ "type": "Feature", "properties": { "Title": "Chile", "Șef de stat": "Președinte Gabriel Boric", "iconUrl": "Chile.png", "Academic field": "Professions and applied sciences", "Profession": "Law", "Universitatea": "Universitatea din Chile", "Gen": "Masculin", "Birth year ": 1986, "Generația": "Millennials", "Region": "America" }, "geometry": { "type": "Point", "coordinates": [ -71.542969, -35.675147 ] } },
+{ "type": "Feature", "properties": { "Title": "Burkina Faso", "Șef de stat": "Președinte Ibrahim Traore", "iconUrl": "Burkinafaso.png", "Academic field": "Professions and applied sciences", "Profession": "military", "Universitatea": "Universitatea din Ouagadougou", "Gen": "Masculin", "Birth year ": 1988, "Generația": "Millennials", "Region": "Africa" }, "geometry": { "type": "Point", "coordinates": [ -1.561593, 12.238333 ] } }
+]
+}
+
+
+
+    // add markers to map
+for (const feature of geojson.features) {
+    // create a HTML element for each feature
+    const el = document.createElement('div');
+    const width = 50;
+    const height = 50;
+    const url = feature.properties.iconUrl;
+    el.className = 'marker';
+    el.style.backgroundImage = `url(${url})`;
+    el.style.width = `50px`;
+    el.style.height = `50px`;
+    el.style.backgroundSize = '100%';
+
+    // make a marker for each feature and add to the map
+    new mapboxgl.Marker(el)
+    .setLngLat(feature.geometry.coordinates)
+    .setPopup(
+        new mapboxgl.Popup({ offset:25, closeOnClick:true, closeButton:false, focusAfterOpen:true, closeOnMove:true,}) // add popups
+        .setHTML(
+        `<h3 style="margin-top:1px; margin-bottom:1px;">${feature.properties.Title}</h3><p style="margin-top:1px; margin-bottom:1px;"><img src=${url} style= "width:70%; height:100%"> </p><p style="margin-top:1px; margin-bottom:1px;"><b>Șef de stat:</b> ${feature.properties['Șef de stat']}</p><p style="margin-top:1px; margin-bottom:1px;"><b>Gen:</b>${feature.properties['Gen']}</p><p style="margin-top:1px; margin-bottom:1px;"><b>Universitatea:</b>${feature.properties['Universitatea']}</p><p style="margin-top:1px; margin-bottom:1px;"><b>Generația:</b>${feature.properties['Generația']}</p>`
+        )
+    )
+    .addTo(map);
+}
+
+
+</script>
+
+</body>
+</html>
